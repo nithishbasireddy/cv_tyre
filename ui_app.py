@@ -1,6 +1,7 @@
 import sys
 import cv2
 import numpy as np
+import config
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QPushButton, QLabel,
     QFileDialog, QHBoxLayout, QVBoxLayout, QWidget, QStatusBar
@@ -101,18 +102,13 @@ class TyreInspectionApp(QMainWindow):
 
     def detect_crack(self, frame):
         # --- SAME LOGIC AS YOUR PIPELINE (SIMPLIFIED) ---
-        ROIS = [
-            (568, 232, 128, 244),
-            (388, 336, 145, 163)
-        ]
-
         output = frame.copy()
 
-        for rx, ry, rw, rh in ROIS:
+        for rx, ry, rw, rh in config.ROIS:
             roi = frame[ry:ry + rh, rx:rx + rw]
 
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            blur = cv2.GaussianBlur(gray, (5, 5), 0)
+            blur = cv2.GaussianBlur(gray, config.BLUR_KERNEL_SIZE, 0)
 
             grad_x = cv2.Sobel(blur, cv2.CV_64F, 1, 0)
             grad_y = cv2.Sobel(blur, cv2.CV_64F, 0, 1)
@@ -120,12 +116,12 @@ class TyreInspectionApp(QMainWindow):
             abs_x = np.abs(grad_x)
             abs_y = np.abs(grad_y)
 
-            mask = abs_y > abs_x * 1.5
+            mask = abs_y > abs_x * config.GRADIENT_RATIO_THRESHOLD
             horiz = np.zeros_like(abs_y)
             horiz[mask] = abs_y[mask]
 
             horiz = np.uint8(255 * horiz / (horiz.max() + 1e-5))
-            _, binary = cv2.threshold(horiz, 55, 255, cv2.THRESH_BINARY)
+            _, binary = cv2.threshold(horiz, config.BINARY_THRESHOLD, 255, cv2.THRESH_BINARY)
 
             contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -133,11 +129,11 @@ class TyreInspectionApp(QMainWindow):
 
             for cnt in contours:
                 area = cv2.contourArea(cnt)
-                if area < 80:
+                if area < config.MIN_CONTOUR_AREA:
                     continue
 
                 x, y, w, h = cv2.boundingRect(cnt)
-                if w / (h + 1e-5) < 3.0:
+                if w / (h + 1e-5) < config.MAX_ASPECT_RATIO:
                     continue
 
                 cv2.rectangle(
